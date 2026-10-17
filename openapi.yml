@@ -1,0 +1,313 @@
+
+openapi: 3.1.0
+
+info:
+  title: Reverse Calendar API
+  version: 1.0.0
+  description: Life-first scheduling and life opportunity discovery.
+
+servers:
+  - url: http://localhost:8000
+
+paths:
+  /api/v1/schedule/{userid}:
+    get:
+      operationId: getUserSchedule
+      summary: Get a user's existing calendar events
+      parameters:
+        - name: userid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User's calendar events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarEvent'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/schedule:
+    post:
+      operationId: rebuildSchedule
+      summary: Rebuild a schedule around personal priorities
+      description: >
+        Reschedules movable events where possible and returns the resulting
+        events and unresolved conflicts. Non-movable events must not move.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - events
+              properties:
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CalendarEvent'
+            example:
+              events:
+                - id: meeting-1
+                  title: Team meeting
+                  type: work
+                  start: '2026-10-19T09:00:00Z'
+                  end: '2026-10-19T10:00:00Z'
+                  duration_minutes: 60
+                  movable: false
+                  priority: 1
+                  description: Weekly team meeting
+                - id: gym-1
+                  title: Gym session
+                  type: personal
+                  start: '2026-10-19T18:00:00Z'
+                  end: '2026-10-19T19:00:00Z'
+                  duration_minutes: 60
+                  movable: false
+                  priority: 1
+                  description: Protected personal time
+                - id: report-1
+                  title: Finish report
+                  type: work
+                  start: '2026-10-19T14:00:00Z'
+                  end: '2026-10-19T15:30:00Z'
+                  duration_minutes: 90
+                  movable: true
+                  deadline: '2026-10-19T17:00:00Z'
+                  priority: 2
+                  description: Complete the client report
+      responses:
+        '200':
+          description: Schedule computed, possibly with unresolved conflicts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleResponse'
+              example:
+                events:
+                  - id: meeting-1
+                    title: Team meeting
+                    type: work
+                    start: '2026-10-19T09:00:00Z'
+                    end: '2026-10-19T10:00:00Z'
+                    duration_minutes: 60
+                    movable: false
+                    priority: 1
+                    description: Weekly team meeting
+                  - id: report-1
+                    title: Finish report
+                    type: work
+                    start: '2026-10-19T10:00:00Z'
+                    end: '2026-10-19T11:30:00Z'
+                    duration_minutes: 90
+                    movable: true
+                    deadline: '2026-10-19T17:00:00Z'
+                    priority: 2
+                    description: Complete the client report
+                  - id: gym-1
+                    title: Gym session
+                    type: personal
+                    start: '2026-10-19T18:00:00Z'
+                    end: '2026-10-19T19:00:00Z'
+                    duration_minutes: 60
+                    movable: false
+                    priority: 1
+                    description: Protected personal time
+                conflicts:
+                  - event_id: task-2
+                    reason: No available slot before the deadline
+        '422':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/opportunities/{userid}:
+    get:
+      operationId: getOpportunities
+      summary: Get opportunity candidates for a user
+      description: Returns opportunities filtered by user interests. Can be filtered by specific type.
+      parameters:
+        - name: userid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - astronomy
+              - outdoors
+              - culture
+              - other
+          description: Filter by opportunity type. If provided, overrides user's stored interests.
+      responses:
+        '200':
+          description: List of opportunity candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Opportunity'
+              example:
+                - id: opportunity-1
+                  title: Stargazing at Calton Hill
+                  type: astronomy
+                  start: '2026-10-21T20:00:00Z'
+                  end: '2026-10-21T21:30:00Z'
+                  location: Calton Hill, Edinburgh
+                  description: A potential evening for observing the night sky.
+                  data_source: sample
+                - id: opportunity-2
+                  title: Arthur's Seat walk
+                  type: outdoors
+                  start: '2026-10-24T09:00:00Z'
+                  end: '2026-10-24T11:00:00Z'
+                  location: Arthur's Seat, Edinburgh
+                  description: A morning outdoor adventure.
+                  data_source: sample
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    CalendarEvent:
+      type: object
+      required:
+        - id
+        - title
+        - type
+        - start
+        - end
+        - duration_minutes
+        - movable
+        - priority
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum:
+            - work
+            - personal
+            - opportunity
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+          minimum: 1
+        movable:
+          type: boolean
+        deadline:
+          type: string
+          format: date-time
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+        description:
+          type: string
+
+    ScheduleResponse:
+      type: object
+      required:
+        - events
+        - conflicts
+      properties:
+        events:
+          type: array
+          description: Resulting events, including unchanged events.
+          items:
+            $ref: '#/components/schemas/CalendarEvent'
+        conflicts:
+          type: array
+          description: Tasks that could not be scheduled feasibly.
+          items:
+            $ref: '#/components/schemas/Conflict'
+
+    Conflict:
+      type: object
+      required:
+        - event_id
+        - reason
+      properties:
+        event_id:
+          type: string
+        reason:
+          type: string
+
+    Opportunity:
+      type: object
+      required:
+        - id
+        - title
+        - type
+        - start
+        - end
+        - location
+        - description
+        - data_source
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum:
+            - astronomy
+            - outdoors
+            - culture
+            - other
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        location:
+          type: string
+        description:
+          type: string
+        data_source:
+          type: string
+          enum:
+            - verified
+            - sample
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
